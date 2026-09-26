@@ -1,0 +1,21 @@
+[project]
+name = "football-data-science"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "arviz>=0.21,<1",
+    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.3",
+    "polars>=1.44.1",
+    "pymc>=5.28,<6",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
