@@ -3,8 +3,8 @@ import numpy as np
 import polars as pl
 from scipy.stats import beta as beta_dist
 
-from plots import plot_rate_estimates, plot_rate_posterior
-from utils import aggregate_binary_outcomes
+from .plots import PLOT_COLORS, PLOT_STYLE, plot_rate_estimates, plot_rate_posterior
+from .utils import aggregate_binary_outcomes
 
 
 def estimate_binary_rate_by_group(df: pl.DataFrame,
@@ -177,6 +177,7 @@ def make_beta_prior(mean: float, strength: float) -> tuple[float, float]:
     return alpha, beta_
 
 
+@plt.rc_context(PLOT_STYLE)
 def main() -> None:
     """
     Display Bayesian pass-completion estimates for the sample match.
@@ -203,7 +204,11 @@ def main() -> None:
                             top_n=20,
                             sort_by="post_mean",
                             title="Passing reliability (at least 10 attempts)")
-    ax.axvline(prior_mean, color="orange", linestyle="--", alpha=0.7, label=f"Population rate ({prior_mean:.1%})")
+    ax.axvline(prior_mean,
+               color=PLOT_COLORS["orange"],
+               linestyle="--",
+               alpha=0.7,
+               label=f"Population rate ({prior_mean:.1%})")
     ax.legend()
 
     player_name = "Mohamed Salah"

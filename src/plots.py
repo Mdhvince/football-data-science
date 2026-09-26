@@ -1,3 +1,10 @@
+"""
+Render football charts on a navy background at 300 DPI.
+
+Plot functions apply PLOT_STYLE locally. Use plt.style.use(PLOT_STYLE) in notebooks
+so additional annotations and plots use the same defaults. Save with dpi="figure"
+to retain the figure resolution; PNG exports keep the figure background by default.
+"""
 from typing import Any
 
 import arviz as az
@@ -9,6 +16,50 @@ from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 from numpy.typing import NDArray
 from scipy.stats import beta as beta_dist
+
+
+PLOT_COLORS = {
+    "background": "#141d2b",
+    "foreground": "#c9d4e5",
+    "muted": "#8fa3bf",
+    "grid": "#233450",
+    "blue": "#5b8ff9",
+    "orange": "#f6a35c",
+    "green": "#61ddaa",
+    "purple": "#b6a2e0",
+    "red": "#ee6666",
+}
+
+PLOT_STYLE = {
+    "figure.facecolor": PLOT_COLORS["background"],
+    "figure.edgecolor": PLOT_COLORS["background"],
+    "figure.dpi": 300,
+    "savefig.dpi": "figure",
+    "savefig.facecolor": "auto",
+    "savefig.edgecolor": "auto",
+    "savefig.transparent": False,
+    "axes.facecolor": PLOT_COLORS["background"],
+    "axes.edgecolor": PLOT_COLORS["muted"],
+    "axes.labelcolor": PLOT_COLORS["foreground"],
+    "axes.titlecolor": PLOT_COLORS["foreground"],
+    "axes.linewidth": 0.8,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.axisbelow": True,
+    "axes.grid": True,
+    "axes.grid.axis": "y",
+    "axes.prop_cycle": plt.cycler(color=[PLOT_COLORS[name] for name in ("blue", "orange", "green", "purple", "red")]),
+    "text.color": PLOT_COLORS["foreground"],
+    "xtick.color": PLOT_COLORS["muted"],
+    "ytick.color": PLOT_COLORS["muted"],
+    "grid.color": PLOT_COLORS["grid"],
+    "grid.linewidth": 0.5,
+    "grid.alpha": 1.0,
+    "legend.facecolor": PLOT_COLORS["background"],
+    "legend.edgecolor": PLOT_COLORS["grid"],
+    "legend.labelcolor": PLOT_COLORS["foreground"],
+    "legend.frameon": False,
+}
 
 
 def _interval_label(credibility: float | pl.Series | None, kind: str) -> str:
@@ -31,6 +82,7 @@ def _interval_label(credibility: float | pl.Series | None, kind: str) -> str:
     return f"{100 * credibility:g}% {kind}"
 
 
+@plt.rc_context(PLOT_STYLE)
 def plot_group_effects(effects: pl.DataFrame,
                        group: str = "player",
                        baseline: pl.DataFrame | None = None,
@@ -50,8 +102,8 @@ def plot_group_effects(effects: pl.DataFrame,
     labels = [str(label) for label in effects[group]]
     fig, ax = plt.subplots(figsize=(10, max(3, 0.35 * effects.height)))
     y = np.arange(effects.height)
-    ax.hlines(y, effects["hdi_low"], effects["hdi_high"], color="steelblue", label=interval_label)
-    ax.scatter(effects["effect_mean"], y, label="Posterior mean", color="steelblue")
+    ax.hlines(y, effects["hdi_low"], effects["hdi_high"], color=PLOT_COLORS["blue"], label=interval_label)
+    ax.scatter(effects["effect_mean"], y, label="Posterior mean", color=PLOT_COLORS["blue"])
     if baseline is not None:
         aligned = effects.select(group).join(
             baseline.select(group, "effect_mean"), on=group, how="left", validate="1:1",
@@ -60,9 +112,15 @@ def plot_group_effects(effects: pl.DataFrame,
         baseline_means = aligned["effect_mean"].cast(pl.Float64).to_numpy()
         available = np.isfinite(baseline_means)
         if available.any():
-            ax.scatter(baseline_means[available], y[available], marker="D", color="orange", label="Baseline mean")
+            ax.scatter(baseline_means[available],
+                       y[available],
+                       marker="D",
+                       color=PLOT_COLORS["orange"],
+                       label="Baseline mean")
         labels = [label if available[index] else f"{label} (baseline unavailable)" for index, label in enumerate(labels)]
-    ax.axvline(0, linestyle="--", color="grey")
+    ax.axvline(0, linestyle="--", color=PLOT_COLORS["muted"])
+    ax.grid(False, axis="y")
+    ax.grid(True, axis="x")
     ax.set_yticks(y, labels)
     ax.set(title=title or f"Posterior {group} effects ({effects.height} groups)", xlabel="Group effect (log-odds)")
     ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
@@ -70,6 +128,7 @@ def plot_group_effects(effects: pl.DataFrame,
     return fig, ax
 
 
+@plt.rc_context(PLOT_STYLE)
 def plot_prior_predictive(trace: az.InferenceData, title: str = "Prior predictive check") -> tuple[Figure, Axes]:
     """
     Display conversion probabilities implied by the prior.
@@ -81,13 +140,14 @@ def plot_prior_predictive(trace: az.InferenceData, title: str = "Prior predictiv
     """
     probabilities = trace.prior["p"]
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.hist(probabilities.values.ravel(), bins=40, color="orange", alpha=0.7)
+    ax.hist(probabilities.values.ravel(), bins=40, color=PLOT_COLORS["orange"], alpha=0.7)
     ax.set_title(f"{title}\n{probabilities.sizes['observation']} observations; chains and draws pooled")
     ax.set(xlabel="Prior conversion probability", ylabel="Probability sample count", xlim=(0, 1))
     fig.tight_layout()
     return fig, ax
 
 
+@plt.rc_context(PLOT_STYLE)
 def plot_posterior_predictive(trace: az.InferenceData,
                               credibility: float = 0.95,
                               title: str = "Posterior predictive check") -> tuple[Figure, NDArray[np.object_]]:
@@ -113,16 +173,16 @@ def plot_posterior_predictive(trace: az.InferenceData,
     axes[0].vlines(observation_index,
                    low,
                    high,
-                   color="steelblue",
+                   color=PLOT_COLORS["blue"],
                    alpha=0.5,
                    label=f"{100 * credibility:g}% equal-tail predictive interval")
-    axes[0].scatter(observation_index, mean, color="steelblue", label="Predictive mean")
-    axes[0].scatter(observation_index, observed, color="black", marker="x", label="Observed outcome")
+    axes[0].scatter(observation_index, mean, color=PLOT_COLORS["blue"], label="Predictive mean")
+    axes[0].scatter(observation_index, observed, color=PLOT_COLORS["foreground"], marker="x", label="Observed outcome")
     axes[0].set(title="Outcomes by observation", xlabel="Observation (input order)", ylabel="Successes")
     axes[0].xaxis.set_major_locator(MaxNLocator(integer=True))
     axes[0].legend(loc="upper left", bbox_to_anchor=(0, -0.2))
-    axes[1].hist(samples.sum(axis=-1).ravel(), bins=30, color="steelblue", alpha=0.7)
-    axes[1].axvline(observed.sum(), color="black", linestyle="--", label="Observed total")
+    axes[1].hist(samples.sum(axis=-1).ravel(), bins=30, color=PLOT_COLORS["blue"], alpha=0.7)
+    axes[1].axvline(observed.sum(), color=PLOT_COLORS["foreground"], linestyle="--", label="Observed total")
     axes[1].set(title="Total successes", xlabel="Replicated total successes", ylabel="Draw count")
     axes[1].xaxis.set_major_locator(MaxNLocator(integer=True))
     axes[1].legend()
@@ -130,6 +190,7 @@ def plot_posterior_predictive(trace: az.InferenceData,
     return fig, axes
 
 
+@plt.rc_context(PLOT_STYLE)
 def plot_rate_estimates(df: pl.DataFrame,
                         group_col: str,
                         top_n: int | None = 20,
@@ -171,15 +232,17 @@ def plot_rate_estimates(df: pl.DataFrame,
 
     interval_label = _interval_label(data.get_column("credibility", default=None), "credible interval")
     fig, ax = plt.subplots(figsize=(9, max(4, len(labels) * 0.35)))
-    ax.scatter(naive, y, color="black", marker="x", label="Observed rate")
+    ax.scatter(naive, y, color=PLOT_COLORS["foreground"], marker="x", label="Observed rate")
     ax.errorbar(posterior,
                 y,
                 xerr=[posterior - ci_low, ci_high - posterior],
                 fmt="o",
-                color="steelblue",
+                color=PLOT_COLORS["blue"],
                 capsize=3,
                 label=f"Posterior mean + {interval_label}")
 
+    ax.grid(False, axis="y")
+    ax.grid(True, axis="x")
     ax.set_yticks(y)
     ax.set_yticklabels(labels)
 
@@ -194,6 +257,7 @@ def plot_rate_estimates(df: pl.DataFrame,
     return ax
 
 
+@plt.rc_context(PLOT_STYLE)
 def plot_rate_posterior(row: dict[str, Any], label: str | None = None) -> Axes:
     """
     Compare the prior and posterior distributions for one binary success rate.
@@ -223,14 +287,17 @@ def plot_rate_posterior(row: dict[str, Any], label: str | None = None) -> Axes:
 
     fig, ax = plt.subplots(figsize=(10, 5))
 
-    ax.plot(x, prior_pdf, color="orange", linestyle="--", linewidth=2, label="Prior")
-    ax.plot(x, posterior_pdf, color="steelblue", linewidth=2.5, label="Posterior")
+    ax.plot(x, prior_pdf, color=PLOT_COLORS["orange"], linestyle="--", linewidth=2, label="Prior")
+    ax.plot(x, posterior_pdf, color=PLOT_COLORS["blue"], linewidth=2.5, label="Posterior")
     mask = (x >= row["ci_low"]) & (x <= row["ci_high"])
-    ax.fill_between(x[mask], posterior_pdf[mask], color="steelblue", alpha=0.2, label=interval_label)
-    ax.axvline(prior_mean, color="orange", linestyle=":", label=f"Prior mean ({prior_mean:.1%})")
-    ax.axvline(post_mean, color="steelblue", linestyle="--", label=f"Posterior mean ({post_mean:.1%})")
+    ax.fill_between(x[mask], posterior_pdf[mask], color=PLOT_COLORS["blue"], alpha=0.2, label=interval_label)
+    ax.axvline(prior_mean, color=PLOT_COLORS["orange"], linestyle=":", label=f"Prior mean ({prior_mean:.1%})")
+    ax.axvline(post_mean, color=PLOT_COLORS["blue"], linestyle="--", label=f"Posterior mean ({post_mean:.1%})")
     if observed_available:
-        ax.axvline(naive_rate, color="black", linestyle="-.", label=f"Observed rate ({naive_rate:.1%})")
+        ax.axvline(naive_rate,
+                   color=PLOT_COLORS["foreground"],
+                   linestyle="-.",
+                   label=f"Observed rate ({naive_rate:.1%})")
 
     title = "Prior → posterior"
 

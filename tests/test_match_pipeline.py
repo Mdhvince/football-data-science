@@ -4,8 +4,8 @@ import numpy as np
 import polars as pl
 import pytest
 
-from hierarchical_soccer_factor_model import prepare_match_shots
-from utils import build_player_lookup, load_metadata, sanity_check_attack_direction
+from src.hierarchical_soccer_factor_model import prepare_match_shots
+from src.utils import build_player_lookup, load_metadata, sanity_check_attack_direction
 
 
 @pytest.mark.skipif(not Path("data/meta/2004437.json").exists(), reason="Local sample match unavailable")

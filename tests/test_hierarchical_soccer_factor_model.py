@@ -8,14 +8,14 @@ import pymc as pm
 import pytest
 import pytensor
 
-from hierarchical_soccer_factor_model import (build_hierarchical_bernoulli_model,
-                                             build_hierarchical_binomial_model,
-                                             compute_empirical_prior_anchors,
-                                             fit_hierarchical_model,
-                                             summarize_group_effects,
-                                             summarize_sampling_diagnostics)
-from plots import plot_group_effects, plot_posterior_predictive, plot_prior_predictive
-from utils import aggregate_binary_outcomes
+from src.hierarchical_soccer_factor_model import (build_hierarchical_bernoulli_model,
+                                                 build_hierarchical_binomial_model,
+                                                 compute_empirical_prior_anchors,
+                                                 fit_hierarchical_model,
+                                                 summarize_group_effects,
+                                                 summarize_sampling_diagnostics)
+from src.plots import plot_group_effects, plot_posterior_predictive, plot_prior_predictive
+from src.utils import aggregate_binary_outcomes
 
 
 matplotlib.use("Agg")

@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from utils import validate_binary_outcomes
+from .utils import validate_binary_outcomes
 
 
 SHOT_FEATURES = ["distance_to_goal", "shot_cone_defenders", "nearest_defender_distance"]

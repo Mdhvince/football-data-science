@@ -2,12 +2,12 @@ import numpy as np
 import polars as pl
 import pytest
 
-from shot_features import compute_shot_tracking_features, prepare_shots
-from utils import (add_attack_dir,
-                   aggregate_binary_outcomes,
-                   attack_dir_lookup,
-                   attack_direction_from_meta,
-                   enrich_tracking_with_attack_direction)
+from src.shot_features import compute_shot_tracking_features, prepare_shots
+from src.utils import (add_attack_dir,
+                       aggregate_binary_outcomes,
+                       attack_dir_lookup,
+                       attack_direction_from_meta,
+                       enrich_tracking_with_attack_direction)
 
 
 def sample_tracking() -> pl.DataFrame:
