@@ -3,7 +3,7 @@ from typing import Any
 import numpy as np
 import polars as pl
 
-from .utils import validate_binary_outcomes
+from src.utils import validate_binary_outcomes
 
 
 SHOT_FEATURES = ["distance_to_goal", "shot_cone_defenders", "nearest_defender_distance"]
@@ -15,7 +15,7 @@ def prepare_shots(events: pl.DataFrame, frame_col: str = "frame_end") -> pl.Data
     Example: "Which possessions ended in a shot?"
 
     :param events: SkillCorner dynamic events with non-null binary lead_to_goal.
-    :param frame_col: Shot moment; frame_end by default, frame_start for notebook parity.
+    :param frame_col: Event frame column used to select the tracking snapshot; defaults to frame_end.
     :returns: Shot rows with is_goal and shot_frame, without dropping missing group keys.
     """
     required = {"event_type", "end_type", "lead_to_goal", "match_id", "period",

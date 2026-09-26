@@ -3,8 +3,8 @@ import numpy as np
 import polars as pl
 from scipy.stats import beta as beta_dist
 
-from .plots import PLOT_COLORS, PLOT_STYLE, plot_rate_estimates, plot_rate_posterior
-from .utils import aggregate_binary_outcomes
+from src.plots import PLOT_COLORS, PLOT_STYLE, plot_rate_estimates, plot_rate_posterior
+from src.utils import aggregate_binary_outcomes
 
 
 def estimate_binary_rate_by_group(df: pl.DataFrame,
