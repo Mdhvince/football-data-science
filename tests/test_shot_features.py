@@ -3,10 +3,10 @@ import polars as pl
 import pytest
 
 from src.shot_features import compute_shot_tracking_features, prepare_shots
-from src.utils import (add_attack_dir,
+from src.utils import (add_attack_directions,
                        aggregate_binary_outcomes,
-                       attack_dir_lookup,
-                       attack_direction_from_meta,
+                       build_attack_direction_lookup,
+                       read_attack_directions_from_metadata,
                        enrich_tracking_with_attack_direction)
 
 
@@ -26,45 +26,48 @@ def sample_shots() -> pl.DataFrame:
 
 def test_geometry_policies_and_direction() -> None:
     shots, tracking = sample_shots(), sample_tracking()
-    result = compute_shot_tracking_features(shots, tracking, 105).row(0, named=True)
-    assert result["distance_to_goal"] == 12.5
-    assert result["shot_cone_defenders"] == 1
-    assert result["nearest_defender_distance"] == 1
-    assert result["n_opponents"] == 3
-    detected = compute_shot_tracking_features(shots, tracking, 105, detected_only=True)
-    assert detected["nearest_defender_distance"][0] == 5
-    no_gk = compute_shot_tracking_features(shots, tracking, 105, include_goalkeeper=False)
-    assert no_gk["shot_cone_defenders"][0] == 0
-    mirrored = tracking.with_columns(-pl.col("x"), -pl.col("y"), pl.lit("L").alias("attack_dir"))
-    assert compute_shot_tracking_features(shots, mirrored, 105)["distance_to_goal"][0] == 12.5
-    assert compute_shot_tracking_features(shots, mirrored, 105)["shot_cone_defenders"][0] == 1
-    # Direction comes from metadata even when shooter is in their own half.
-    own_half = tracking.with_columns(pl.when(pl.col("player_id") == 1).then(-10.).otherwise(pl.col("x")).alias("x"))
-    assert compute_shot_tracking_features(shots, own_half, 105)["distance_to_goal"][0] == 62.5
+    shot_features = compute_shot_tracking_features(shots, tracking, 105).row(0, named=True)
+    assert shot_features["distance_to_goal"] == 12.5
+    assert shot_features["shot_cone_defenders"] == 1
+    assert shot_features["nearest_defender_distance"] == 1
+    assert shot_features["n_opponents"] == 3
+    detected_only_features = compute_shot_tracking_features(shots, tracking, 105, detected_only=True)
+    assert detected_only_features["nearest_defender_distance"][0] == 5
+    features_without_goalkeeper = compute_shot_tracking_features(shots, tracking, 105, include_goalkeeper=False)
+    assert features_without_goalkeeper["shot_cone_defenders"][0] == 0
+    mirrored_tracking = tracking.with_columns(-pl.col("x"), -pl.col("y"), pl.lit("L").alias("attack_dir"))
+    assert compute_shot_tracking_features(shots, mirrored_tracking, 105)["distance_to_goal"][0] == 12.5
+    assert compute_shot_tracking_features(shots, mirrored_tracking, 105)["shot_cone_defenders"][0] == 1
+    # Direction comes from metadata even when the shooter is in their own half.
+    shooter_in_own_half = tracking.with_columns(
+        pl.when(pl.col("player_id") == 1).then(-10.).otherwise(pl.col("x")).alias("x"))
+    assert compute_shot_tracking_features(shots, shooter_in_own_half, 105)["distance_to_goal"][0] == 62.5
 
 
-@pytest.mark.parametrize("change,status", [
+@pytest.mark.parametrize("shot_changes,expected_status", [
     ({"period": 2}, "missing_frame"), ({"match_id": 2}, "missing_frame"),
     ({"player_id": 99}, "missing_shooter"), ({"team_id": 99}, "team_mismatch"),
 ])
-def test_exact_keys_and_missing_data(change: dict[str, int], status: str) -> None:
-    shots = sample_shots().with_columns([pl.lit(value).alias(key) for key, value in change.items()])
-    result = compute_shot_tracking_features(shots, sample_tracking(), 105)
-    assert result.height == 1
-    assert result["tracking_status"][0] == status
-    assert result["distance_to_goal"][0] is None
+def test_exact_keys_and_missing_data(shot_changes: dict[str, int], expected_status: str) -> None:
+    shots = sample_shots().with_columns([pl.lit(value).alias(column) for column, value in shot_changes.items()])
+    shot_features = compute_shot_tracking_features(shots, sample_tracking(), 105)
+    assert shot_features.height == 1
+    assert shot_features["tracking_status"][0] == expected_status
+    assert shot_features["distance_to_goal"][0] is None
 
 
 def test_invalid_tracking_and_empty_inputs() -> None:
     shots, tracking = sample_shots(), sample_tracking()
     with pytest.raises(ValueError, match="one row"):
         compute_shot_tracking_features(shots, pl.concat([tracking, tracking.head(1)]), 105)
-    unknown = tracking.with_columns(pl.lit("?").alias("attack_dir"))
-    assert compute_shot_tracking_features(shots, unknown, 105)["tracking_status"][0] == "unknown_direction"
-    invalid = tracking.with_columns(pl.when(pl.col("team_id") == 2).then(float("nan")).otherwise(pl.col("x")).alias("x"))
-    result = compute_shot_tracking_features(shots, invalid, 105)
-    assert result["tracking_status"][0] == "no_opponents"
-    assert result["shot_cone_defenders"][0] is None
+    tracking_without_direction = tracking.with_columns(pl.lit("?").alias("attack_dir"))
+    shot_features = compute_shot_tracking_features(shots, tracking_without_direction, 105)
+    assert shot_features["tracking_status"][0] == "unknown_direction"
+    missing_opponent_positions = tracking.with_columns(
+        pl.when(pl.col("team_id") == 2).then(float("nan")).otherwise(pl.col("x")).alias("x"))
+    shot_features = compute_shot_tracking_features(shots, missing_opponent_positions, 105)
+    assert shot_features["tracking_status"][0] == "no_opponents"
+    assert shot_features["shot_cone_defenders"][0] is None
     assert compute_shot_tracking_features(shots.head(0), tracking, 105).height == 0
 
 
@@ -80,40 +83,42 @@ def test_prepare_shots_frame_and_outcome_validation() -> None:
         prepare_shots(events.with_columns(pl.lit(None).alias("lead_to_goal")))
 
 
-@pytest.mark.parametrize("values", [[0, 2], [0., .2], [True, None], [0., np.nan]])
-def test_aggregate_rejects_non_binary(values: list[bool | int | float | None]) -> None:
+@pytest.mark.parametrize("invalid_outcomes", [[0, 2], [0., .2], [True, None], [0., np.nan]])
+def test_aggregate_rejects_non_binary(invalid_outcomes: list[bool | int | float | None]) -> None:
     with pytest.raises(ValueError):
-        aggregate_binary_outcomes(pl.DataFrame({"group": [1, 1], "success": values}), "group", "success")
+        aggregate_binary_outcomes(pl.DataFrame({"group": [1, 1], "success": invalid_outcomes}), "group", "success")
 
 
-def test_attack_direction_id_and_legacy_compatibility() -> None:
-    directions = {40: {1: "R", 2: "L"}, 2: {1: "L", 2: "R"}}
+def test_attack_direction_lookup_accepts_team_ids_and_names() -> None:
+    attack_directions = {40: {1: "R", 2: "L"}, 2: {1: "L", 2: "R"}}
     tracking = sample_tracking().with_columns(pl.lit("same name").alias("team_short")).drop("attack_dir")
-    enriched = add_attack_dir(tracking, attack_dir_lookup(directions))
-    assert enriched["attack_dir"].to_list() == ["R", "L", "L", "L", "R", "Ball"]
-    legacy = attack_dir_lookup({40: {1: "R"}}, {40: "same name"})
-    assert add_attack_dir(tracking, legacy)["attack_dir"][0] == "R"
+    tracking_with_directions = add_attack_directions(tracking, build_attack_direction_lookup(attack_directions))
+    assert tracking_with_directions["attack_dir"].to_list() == ["R", "L", "L", "L", "R", "Ball"]
+    name_based_lookup = build_attack_direction_lookup({40: {1: "R"}}, {40: "same name"})
+    assert add_attack_directions(tracking, name_based_lookup)["attack_dir"][0] == "R"
     with pytest.raises(ValueError, match="Unknown"):
-        attack_direction_from_meta({"home_team": {"id": 40}, "away_team": {"id": 2}, "home_team_side": ["bad"]})
+        read_attack_directions_from_metadata(
+            {"home_team": {"id": 40}, "away_team": {"id": 2}, "home_team_side": ["bad"]})
 
 
 def test_boolean_aggregation_and_multiple_shots_keep_order() -> None:
-    result = aggregate_binary_outcomes(pl.DataFrame({"group": [1, 1, 1], "success": [True, False, True]}),
-                                       "group",
-                                       "success")
-    assert result["successes"][0] == 2
-    assert result["attempts"][0] == 3
+    grouped_outcomes = aggregate_binary_outcomes(pl.DataFrame({"group": [1, 1, 1], "success": [True, False, True]}),
+                                                 "group",
+                                                 "success")
+    assert grouped_outcomes["successes"][0] == 2
+    assert grouped_outcomes["attempts"][0] == 3
     shots = pl.concat([sample_shots(), sample_shots()]).with_columns(pl.Series("event_id", ["b", "a"]))
-    result = compute_shot_tracking_features(shots, sample_tracking(), 105)
-    assert result["event_id"].to_list() == ["b", "a"]
-    assert result["distance_to_goal"].to_list() == [12.5, 12.5]
+    shot_features = compute_shot_tracking_features(shots, sample_tracking(), 105)
+    assert shot_features["event_id"].to_list() == ["b", "a"]
+    assert shot_features["distance_to_goal"].to_list() == [12.5, 12.5]
 
 
 def test_enrichment_rejects_mixed_or_wrong_matches() -> None:
-    meta = {"id": 1, "home_team": {"id": 40}, "away_team": {"id": 2}, "home_team_side": ["left_to_right"]}
+    metadata = {"id": 1, "home_team": {"id": 40}, "away_team": {"id": 2}, "home_team_side": ["left_to_right"]}
     tracking = sample_tracking().drop("attack_dir")
     with pytest.raises(ValueError, match="one match"):
         enrich_tracking_with_attack_direction(
-            pl.concat([tracking, tracking.with_columns(pl.lit(2, dtype=pl.Int64).alias("match_id"))]), meta)
+            pl.concat([tracking, tracking.with_columns(pl.lit(2, dtype=pl.Int64).alias("match_id"))]), metadata)
     with pytest.raises(ValueError, match="metadata"):
-        enrich_tracking_with_attack_direction(tracking.with_columns(pl.lit(2, dtype=pl.Int64).alias("match_id")), meta)
+        enrich_tracking_with_attack_direction(tracking.with_columns(pl.lit(2, dtype=pl.Int64).alias("match_id")),
+                                               metadata)
